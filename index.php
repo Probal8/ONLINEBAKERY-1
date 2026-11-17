@@ -2,39 +2,537 @@
 include 'Model/db.php'; 
 session_start(); 
 
-if (!isset($_SESSION['email']) && isset($_COOKIE['user_email'])) {
-    $c_email = $_COOKIE['user_email'];
-    $c_res = mysqli_query($conn, "SELECT * FROM users WHERE email='$c_email'");
-    if ($row = mysqli_fetch_assoc($c_res)) {
-        $_SESSION['user_id'] = $row['id'];
-        $_SESSION['username'] = $row['username'];
-        $_SESSION['email'] = $row['email'];
-        $_SESSION['role'] = $row['role'];
+$profile_img = 'default.png'; 
+if(isset($_SESSION['user_id'])){
+    $u_id = $_SESSION['user_id'];
+    $u_res = mysqli_query($conn, "SELECT image FROM users WHERE id = '$u_id'");
+    $u_row = mysqli_fetch_assoc($u_res);
+    if($u_row && !empty($u_row['image'])){
+        $profile_img = $u_row['image'];
     }
 }
+
+$setting_res = mysqli_query($conn, "SELECT announcement, is_marquee_active FROM settings WHERE id = 1");
+$setting = mysqli_fetch_assoc($setting_res);
+$offer_text = $setting['announcement'] ?? "Welcome to Baking Valley!";
+$is_marquee_active = $setting['is_marquee_active'] ?? 0; 
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Baking Valley | Shop</title>
     <link rel="stylesheet" href="shop_style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #7c3aed;
+            --secondary: #e67e22;
+            --success: #22c55e;
+            --text-main: #1e293b;
+            --text-sub: #64748b;
+            --bg-pink: #fff5f7;
+        }
+
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            background-color: var(--bg-pink); 
+        }
+
+        .announcement-bar {
+            background: #0d9488;
+            color: white;
+            padding: 10px 0;
+            overflow: hidden;
+            position: relative;
+            font-size: 14px;
+            font-weight: 700;
+            z-index: 2000;
+        }
+        .marquee-text {
+            display: inline-block;
+            white-space: nowrap;
+            animation: marquee 40s linear infinite;
+        }
+        .marquee-text span {
+            padding-right: 50px;
+            display: inline-block;
+        }
+        @keyframes marquee {
+            0% { transform: translateX(100%); }
+            100% { transform: translateX(-100%); }
+        }
+        .announcement-bar:hover .marquee-text {
+            animation-play-state: paused;
+        }
+
+        nav {
+            background: var(--primary);
+            padding: 12px 5%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .logo a {
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+            gap: 12px;
+        }
+
+        .logo img {
+            height: 45px;
+            width: auto;
+            border-radius: 8px;
+            background: white;
+            padding: 2px;
+        }
+
+        .logo span {
+            color: white;
+            font-weight: 800;
+            font-size: 22px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .search-container {
+            flex: 0 1 400px;
+            display: flex;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 30px;
+            padding: 5px 15px;
+            margin: 0 20px;
+            transition: 0.3s;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .search-container:focus-within {
+            background: white;
+            box-shadow: 0 0 15px rgba(0,0,0,0.1);
+        }
+
+        .search-container input {
+            border: none;
+            background: transparent;
+            color: white;
+            padding: 8px;
+            width: 100%;
+            outline: none;
+        }
+
+        .search-container:focus-within input { color: var(--text-main); }
+
+        .search-container button {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            padding: 0 10px;
+        }
+
+        .search-container:focus-within button { color: var(--primary); }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .nav-links a {
+            color: white;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 15px;
+            transition: 0.3s;
+        }
+
+        .header-socials {
+            display: flex;
+            gap: 12px;
+            padding-right: 15px;
+            border-right: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .header-socials a { font-size: 20px; transition: 0.3s; }
+        .wa-icon { color: #25D366; }
+        .fb-icon { color: #1877F2; }
+
+        .nav-profile-img {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid rgba(255, 255, 255, 0.8); 
+            vertical-align: middle;
+            transition: 0.3s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        .nav-profile-img:hover {
+            transform: scale(1.1);
+            border-color: white;
+        }
+
+        .cart-wrapper { position: relative; display: inline-block; color: white; text-decoration: none; }
+        
+        #cartCount {
+            position: absolute; top: -10px; right: -12px;
+            background-color: #d32f2f; color: white; border-radius: 50%;
+            padding: 2px 5px; font-size: 10px; font-weight: bold;
+            min-width: 15px; text-align: center; border: 2px solid var(--primary);
+            display: none; 
+        }
+
+        .logout-btn { 
+            background-color: white !important; 
+            color: var(--primary) !important; 
+            padding: 8px 18px !important; 
+            border-radius: 20px !important; 
+            font-weight: 700 !important; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .category-nav-wrapper {
+            background: #fff;
+            border-bottom: 2px solid #f1f1f1;
+            padding: 0 5%;
+            margin-bottom: 30px;
+        }
+
+        .category-list {
+            display: flex;
+            justify-content: center;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            flex-wrap: wrap;
+        }
+
+        .cat-btn {
+            background: transparent;
+            border: none;
+            padding: 15px 20px;
+            font-size: 13px;
+            font-weight: 700;
+            color: #333;
+            cursor: pointer;
+            text-transform: uppercase;
+            transition: 0.3s;
+            border-bottom: 3px solid transparent;
+        }
+
+        .cat-btn:hover, .cat-btn.active {
+            color: #d12026;
+            border-bottom: 3px solid #d12026;
+        }
+
+        .mobile-cat-trigger {
+            display: none;
+            background: #d12026;
+            color: white;
+            padding: 15px;
+            width: 100%;
+            border: none;
+            font-weight: bold;
+            text-align: left;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .product-display-container {
+            display: grid !important;
+            grid-template-columns: repeat(6, 1fr) !important;
+            gap: 15px !important;
+            padding: 20px;
+            max-width: 1400px;
+            margin: auto;
+        }
+
+        .product-card {
+            position: relative;
+            background: #fff;
+            border-radius: 12px;
+            overflow: hidden;
+            transition: 0.3s;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #f1f5f9;
+            cursor: pointer; 
+        }
+
+        .product-card:hover { transform: translateY(-5px); box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+
+        .discount-badge {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            background: linear-gradient(45deg, #ef4444, #f43f5e);
+            color: white;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 800;
+            z-index: 10;
+        }
+
+        .price-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 5px;
+        }
+
+        .old-price {
+            color: #94a3b8;
+            text-decoration: line-through;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .current-price {
+            color: var(--primary);
+            font-size: 16px;
+            font-weight: 800;
+        }
+
+        .product-card img {
+            width: 100%;
+            height: 160px;
+            object-fit: cover;
+        }
+
+        .modal {
+            display: none; 
+            position: fixed; 
+            z-index: 9999; 
+            left: 0; top: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.6);
+            backdrop-filter: blur(5px);
+        }
+        .modal-content {
+            background-color: #fff;
+            margin: 8% auto;
+            padding: 25px;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 450px;
+            position: relative;
+            animation: modalFade 0.3s;
+            text-align: center;
+        }
+        @keyframes modalFade { from {opacity: 0; transform: translateY(-20px);} to {opacity: 1; transform: translateY(0);} }
+        .close-modal {
+            position: absolute;
+            right: 20px; top: 15px;
+            font-size: 28px;
+            cursor: pointer;
+            color: #666;
+        }
+        #modalImg { width: 180px; height: 180px; object-fit: cover; border-radius: 15px; margin-bottom: 15px; }
+
+        .cart-sidebar {
+            position: fixed; top: 0; right: -400px;
+            width: 100%; max-width: 400px; height: 100%;
+            background: white; z-index: 10000;
+            box-shadow: -5px 0 25px rgba(0,0,0,0.1);
+            transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex; flex-direction: column;
+        }
+        .cart-sidebar.open { right: 0; }
+        .cart-header { padding: 20px; background: var(--primary); color: white; display: flex; justify-content: space-between; align-items: center; }
+        .cart-body { flex: 1; overflow-y: auto; padding: 10px; }
+        .cart-footer { padding: 20px; border-top: 2px solid #f1f5f9; }
+        .checkout-btn { display: block; width: 100%; padding: 15px; background: var(--primary); color: white; text-align: center; text-decoration: none; border-radius: 12px; font-weight: 700; }
+
+        .why {
+            background: white;
+            padding: 60px 20px;
+            text-align: center;
+            margin-top: 50px;
+            border-top: 1px solid #eee;
+        }
+        .why h2 {
+            font-size: 28px;
+            color: var(--text-main);
+            margin-bottom: 40px;
+            font-weight: 800;
+        }
+        .why-grid {
+            max-width: 1100px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        .why-box {
+            padding: 25px;
+            background: var(--bg-pink);
+            border-radius: 15px;
+            font-weight: 700;
+            color: var(--text-main);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+            transition: 0.3s;
+            border: 1px solid #ffe4e9;
+        }
+        .why-box:hover {
+            transform: translateY(-5px);
+            background: white;
+            border-color: var(--primary);
+        }
+
+        /* --- Media Queries --- */
+        @media (max-width: 1200px) { .product-display-container { grid-template-columns: repeat(4, 1fr) !important; } }
+        @media (max-width: 900px) { 
+            .product-display-container { grid-template-columns: repeat(3, 1fr) !important; } 
+            .nav-links { gap: 10px; }
+            .logo span { font-size: 16px; }
+        }
+
+        @media (max-width: 768px) {
+            nav { padding: 10px 3%; flex-wrap: wrap; justify-content: space-between; }
+            .logo { order: 1; }
+            .nav-links { order: 2; gap: 10px; }
+            .search-container { order: 3; flex: 1 1 100%; margin: 10px 0 5px 0; }
+            
+            .mobile-cat-trigger { display: block; }
+            .category-list {
+                display: none;
+                flex-direction: column;
+                background: #fff;
+            }
+            .category-list.show { display: flex; }
+            .cat-btn {
+                width: 100%;
+                text-align: left;
+                border-bottom: 1px solid #eee;
+                padding: 12px 20px;
+            }
+            .cat-btn.active { border-bottom: 1px solid #eee; border-left: 5px solid #d12026; }
+            
+            .header-socials { display: none; }
+            .nav-links a:not(.logout-btn):not(.cart-wrapper) { display: none; }
+        }
+
+        /* মোবাইল ২ কলাম আপডেট */
+        @media (max-width: 600px) { 
+            .product-display-container { 
+                grid-template-columns: repeat(2, 1fr) !important; 
+                padding: 10px; 
+                gap: 10px !important; 
+            } 
+            .product-card img { height: 145px; }
+            .product-info h3 { font-size: 12px !important; height: 34px !important; }
+            .current-price { font-size: 14px !important; }
+            .old-price { font-size: 10px !important; }
+            .add-btn { font-size: 11px !important; padding: 6px !important; }
+            .logo span { font-size: 14px; }
+            .hero-section h1 { font-size: 28px !important; }
+            .hero-section p { font-size: 14px !important; }
+        }
+
+        .footer-premium {
+            background: #ffffff; padding: 50px 20px;
+            border-top: 2px solid #f1f5f9;
+        }
+
+        .footer-container {
+            max-width: 1200px; margin: 0 auto;
+            display: flex; justify-content: space-between;
+            align-items: flex-start; flex-wrap: wrap; gap: 30px;
+        }
+
+        .footer-box { text-align: left; min-width: 250px; }
+        .footer-box h4 { font-size: 18px; color: var(--text-main); margin-bottom: 15px; font-weight: 700; }
+        
+        .services-list { list-style: none; padding: 0; }
+        .services-list li { 
+            font-size: 14px; color: var(--text-sub); 
+            margin-bottom: 8px; display: flex; align-items: center;
+        }
+        .services-list li::before { 
+            content: "❯"; color: var(--primary); 
+            font-weight: bold; margin-right: 10px; font-size: 12px;
+        }
+
+        .delivery-highlight { 
+            display: flex; align-items: center; gap: 20px; 
+            min-width: 300px; justify-content: flex-end;
+        }
+        .delivery-text { text-align: right; }
+        .delivery-text h3 { color: #e11d48; margin: 0; font-size: 24px; }
+        .delivery-text p { color: #333; font-weight: bold; margin: 0; }
+        .delivery-highlight img { width: 150px; height: auto; }
+
+        .copyright {
+            text-align: center; padding-top: 30px;
+            border-top: 1px solid #eee; margin-top: 30px;
+            color: #94a3b8; font-size: 13px;
+        }
+    </style>
+    
+    <script>
+    if (typeof window.history.replaceState === 'function') {
+        var cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+    }
+</script>
+    
 </head>
 <body>
 
+<?php if ($is_marquee_active == 1): ?>
+<div class="announcement-bar">
+    <div class="marquee-text">
+        <span><?php echo $offer_text; ?></span>
+        <span><?php echo $offer_text; ?></span>
+        <span><?php echo $offer_text; ?></span>
+    </div>
+</div>
+<?php endif; ?>
+
 <nav>
-    <div class="logo"><a href="index.php">BAKING VALLEY</a></div>
+    <div class="logo">
+        <a href="index.php">
+            <img src="uploads/logo (2).jpeg" alt="Logo">
+            <span>BAKING VALLEY</span>
+        </a>
+    </div>
+    
     <div class="search-container">
-        <input type="text" id="searchInput" placeholder="Search..." onkeyup="loadProducts(this.value)">
+        <input type="text" id="searchInput" placeholder="Search products..." onkeyup="loadProducts(this.value)">
         <button><i class="fa fa-search"></i></button>
     </div>
+
     <div class="nav-links">
         <a href="index.php">Home</a>
         <a href="View/my_orders.php">Orders</a>
-        <a href="javascript:void(0)" onclick="toggleCart()"><i class="fa fa-shopping-cart"></i> Cart</a>
+        
+        <div class="header-socials">
+            <a href="https://wa.me/01734090009" target="_blank" class="wa-icon"><i class="fab fa-whatsapp"></i></a>
+            <a href="https://www.facebook.com/share/14UPo2Hr5oF/" target="_blank" class="fb-icon"><i class="fab fa-facebook"></i></a>
+        </div>
+
+        <a href="javascript:void(0)" onclick="toggleCart()" class="cart-wrapper">
+            <i class="fa fa-shopping-basket" style="font-size: 22px;"></i>
+            <span id="cartCount">0</span>
+        </a>
+
         <?php if(isset($_SESSION['email'])): ?>
-            <a href="Controller/customer_edit.php">Profile</a>
+            <a href="View/customer_edit.php" style="margin-right: 5px; display: flex; align-items: center;">
+                <img src="uploads/<?php echo $profile_img; ?>" class="nav-profile-img" alt="User">
+            </a>
             <a href="Controller/logout.php" class="logout-btn">Logout</a>
         <?php else: ?>
             <a href="View/login.php" class="logout-btn">Login</a>
@@ -42,110 +540,238 @@ if (!isset($_SESSION['email']) && isset($_COOKIE['user_email'])) {
     </div>
 </nav>
 
-<div class="hero-section">
-    <h1>Premium Baking Tools</h1>
-    <p>Find everything you need to bake like a pro</p>
-    <a href="#products" class="hero-btn">Explore Now</a>
+<div class="hero-section" style="text-align:center; padding: 100px 20px; background-image: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('uploads/hero.jpeg'); background-size: cover; background-position: center; color: white;">
+    <h1 style="font-size: 45px; text-shadow: 2px 2px 10px rgba(0,0,0,0.5);">Premium Baking Tools</h1>
+    <p style="font-size: 18px; text-shadow: 1px 1px 5px rgba(0,0,0,0.5);">Find everything you need to bake like a pro</p>
+    <a href="#products" class="hero-btn" style="background:var(--primary); color:white; padding:12px 30px; border-radius:30px; text-decoration:none; font-weight:bold; display:inline-block; margin-top:15px; transition: 0.3s; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">Explore Now</a>
 </div>
 
-<div class="category-bar" id="products">
-    <button onclick="filterCat('', this)" class="cat-btn active">All</button>
-    <button onclick="filterCat('Cake', this)" class="cat-btn">Cake</button>
-    <button onclick="filterCat('Tools', this)" class="cat-btn">Tools</button>
-    <button onclick="filterCat('Cream', this)" class="cat-btn">Cream</button>
+<div class="category-nav-wrapper" id="products">
+    <button class="mobile-cat-trigger" onclick="toggleMobileMenu()">
+        <i class="fa fa-bars"></i> SHOP BY CATEGORY <i class="fa fa-chevron-down" style="float:right; margin-top:3px;"></i>
+    </button>
+    <div class="category-list" id="catList">
+        <button onclick="filterCat('All', this)" class="cat-btn active">All</button>
+        <?php
+        $cat_query = mysqli_query($conn, "SELECT DISTINCT category FROM products WHERE is_deleted=0");
+        while($cat_row = mysqli_fetch_assoc($cat_query)) {
+            if(!empty($cat_row['category'])) {
+                $c_name = $cat_row['category'];
+                echo '<button onclick="filterCat(\''.$c_name.'\', this)" class="cat-btn">'.$c_name.'</button>';
+            }
+        }
+        ?>
+    </div>
 </div>
 
-<div class="product-grid product-display-container" id="productDisplay"></div>
+<div class="product-display-container" id="productDisplay"></div>
+
+<div id="productModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" onclick="closeDesc()">&times;</span>
+        <img id="modalImg" src="" alt="">
+        <h2 id="modalName" style="color:var(--primary); margin-bottom:5px;"></h2>
+        <p id="modalCat" style="color:var(--text-sub); font-size:14px; margin-bottom:15px;"></p>
+        <hr style="border:0; border-top:1px solid #eee;">
+        <div id="modalDesc" style="text-align:left; color:#444; line-height:1.6; margin:15px 0; max-height:150px; overflow-y:auto; padding:0 5px;"></div>
+        <h3 id="modalPrice" style="color:var(--secondary); margin-bottom:20px;"></h3>
+        <button id="modalAddBtn" style="width:100%; padding:12px; background:var(--primary); color:white; border:none; border-radius:12px; font-weight:700; cursor:pointer;">Add to Cart</button>
+    </div>
+</div>
 
 <div id="cartSidebar" class="cart-sidebar">
     <div class="cart-header">
         <h3>Shopping Bag</h3>
-        <button onclick="toggleCart()" class="close-btn">&times;</button>
+        <button onclick="toggleCart()" style="background:none; border:none; color:white; font-size:30px; cursor:pointer;">&times;</button>
     </div>
     <div id="cartItems" class="cart-body"></div>
     <div class="cart-footer">
-        <div class="sidebar-total-row">
-            <b>Total:</b> <span id="sideBarTotal">৳ 0.00</span>
+        <div style="display:flex; justify-content:space-between; margin-bottom:15px; font-weight:bold;">
+            <span>Total:</span> <span id="sideBarTotal">৳ 0.00</span>
         </div>
         <a href="View/order_summary.php" class="checkout-btn">Confirm Order</a>
     </div>
 </div>
 
-<footer class="footer-main">
-    <p>&copy; 2026 Baking Valley. All rights reserved.</p>
+<div class="why">
+    <h2>Why Choose Baking Valley?</h2>
+    <div class="why-grid">
+        <div class="why-box">🚚 Fast Delivery</div>
+        <div class="why-box">🧁 Fresh & Quality</div>
+        <div class="why-box">💰 Best Price</div>
+        <div class="why-box">🛒 Easy Order</div>
+    </div>
+</div>
+
+<footer class="footer-premium">
+    <div class="footer-container">
+        <div class="footer-box">
+            <h2 style="color: var(--primary); font-weight: 800; margin-bottom: 15px;">BAKING VALLEY</h2>
+            <p style="color: var(--text-sub); font-size: 14px;">Hotline: +88 01734-090009</p>
+            <p style="color: var(--text-sub); font-size: 14px; margin-top: 10px;">
+                <strong>Our Address:</strong><br>
+                Baten Kha Road, ChapaiNawabganj.
+            </p>
+        </div>
+
+        <div class="footer-box">
+            <h4>Our Services</h4>
+            <ul class="services-list">
+                <li>Bakery supply store</li>
+                <li>Cake decorating Tools and accessories</li>
+                <li>Baking Molds and Pans</li>
+                <li>Baking Ingredients</li>
+            </ul>
+        </div>
+
+        <div class="delivery-highlight">
+            <div class="delivery-text">
+                <h3 style="color: #d12026; font-weight: bold;">দেশজুড়ে সময় মত</h3>
+                <p style="color: #d12026; font-weight: bold; font-size: 24px;">পণ্য ডেলিভারি</p>
+            </div>
+            <img src="uploads/dele.jpg" alt="Delivery Service" style="width: 150px; height: auto;">
+        </div>
+    </div>
 </footer>
 
 <script>
     const fetchJSON = url => fetch(url).then(r => r.json());
 
+    function toggleMobileMenu() {
+        var menu = document.getElementById("catList");
+        menu.classList.toggle("show");
+    }
+
     async function loadProducts(s = '', c = '') {
-        const products = await fetchJSON(`Controller/fetch_products.php?search=${s}&cat=${c}`);
+        let url = `Controller/fetch_products.php?search=${encodeURIComponent(s)}`;
+        if (c !== '' && c !== 'All') {
+            url += `&cat=${encodeURIComponent(c)}`;
+        }
+
+        const products = await fetchJSON(url);
         const container = document.getElementById('productDisplay');
         
-        if(!products.length) {
-            container.innerHTML = "<p style='grid-column:1/-1; text-align:center;'>No products found!</p>";
+        if(!products || !products.length) {
+            container.innerHTML = "<p style='grid-column:1/-1; text-align:center; padding: 50px;'>No products found!</p>";
             return;
         }
 
-        container.innerHTML = products.map(p => `
-            <div class="product-card">
-                <img src="uploads/${p.image || 'default.png'}" alt="${p.name}">
-                <div class="product-info">
-                    <h3>${p.name}</h3>
-                    <p>${p.category}</p>
-                    <span class="price">৳ ${parseFloat(p.price).toFixed(2)}</span>
-                    <button class="add-btn" onclick="addToCart(${p.id})">
-                        <i class="fas fa-cart-plus"></i> Add to Cart
-                    </button>
+        container.innerHTML = products.map(p => {
+            const price = parseFloat(p.price);
+            const oldPrice = p.old_price ? parseFloat(p.old_price) : 0;
+            const isOutOfStock = (p.stock_status === 'Out of Stock');
+            let discountHtml = '';
+            let priceHtml = `<div class="price-wrapper"><span class="current-price">৳ ${price}</span></div>`;
+
+            if(oldPrice > price) {
+                const discountPercent = Math.round(((oldPrice - price) / oldPrice) * 100);
+                discountHtml = `<div class="discount-badge">OFF ${discountPercent}%</div>`;
+                priceHtml = `<div class="price-wrapper"><span class="old-price">৳ ${oldPrice}</span><span class="current-price">৳ ${price}</span></div>`;
+            }
+
+            return `
+                <div class="product-card" style="${isOutOfStock ? 'opacity: 0.7;' : ''}" onclick="openDesc(${JSON.stringify(p).split('"').join("&quot;")})">
+                    ${discountHtml}
+                    <img src="uploads/${p.image || 'default.png'}" alt="${p.name}">
+                    <div class="product-info" style="text-align:center; padding: 12px;">
+                        <h3 style="font-size: 14px; margin-bottom: 5px; height: 38px; overflow: hidden; color: #1e293b;">${p.name}</h3>
+                        ${priceHtml}
+                        <button class="add-btn" ${isOutOfStock ? 'disabled' : ''} onclick="event.stopPropagation(); addToCart(${p.id})" style="margin-top:10px; width: 100%; padding: 8px; border-radius: 8px; border:none; background: var(--primary); color:white; cursor:pointer; font-weight:700; font-size:12px;">
+                            ${isOutOfStock ? 'Out of Stock' : 'Add to Cart'}
+                        </button>
+                    </div>
                 </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
+    }
+
+    function openDesc(product) {
+        document.getElementById('modalName').innerText = product.name;
+        document.getElementById('modalCat').innerText = product.category;
+        document.getElementById('modalImg').src = 'uploads/' + (product.image || 'default.png');
+        document.getElementById('modalDesc').innerText = product.description || "No description available.";
+        document.getElementById('modalPrice').innerText = "Price: ৳" + product.price;
+        document.getElementById('modalAddBtn').onclick = () => { addToCart(product.id); closeDesc(); };
+        document.getElementById('productModal').style.display = "block";
+    }
+
+    function closeDesc() {
+        document.getElementById('productModal').style.display = "none";
+    }
+
+    window.onclick = function(event) {
+        let modal = document.getElementById('productModal');
+        if (event.target == modal) closeDesc();
     }
 
     function filterCat(c, btn) {
-        loadProducts('', c);
         document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+        
+        if(window.innerWidth <= 768) {
+            document.getElementById("catList").classList.remove("show");
+        }
+        
+        document.getElementById('searchInput').value = '';
+        loadProducts('', c);
     }
 
     function toggleCart() {
-        document.getElementById('cartSidebar').classList.toggle('open');
+        const sidebar = document.getElementById('cartSidebar');
+        if(sidebar) sidebar.classList.toggle('open');
         updateCart();
     }
 
     async function updateCart() {
         const data = await fetchJSON('Controller/get_cart.php');
         const container = document.getElementById('cartItems');
+        const countBadge = document.getElementById('cartCount');
         
         if(!data.logged_in) {
-            container.innerHTML = "<p style='padding:20px;'>Please login.</p>";
+            if(container) container.innerHTML = "<p style='padding:20px;'>Please login to view cart.</p>";
+            if(countBadge) countBadge.style.display = 'none';
             return;
         }
 
-        container.innerHTML = data.items.length ? data.items.map(item => `
-            <div class="cart-item" style="display:flex; align-items:center; border-bottom:1px solid #eee; padding:10px;">
-                <img src="uploads/${item.image}" width="40" height="40" style="margin-right:10px;">
-                <div style="flex:1;">
-                    <h4 style="margin:0; font-size:13px;">${item.name}</h4>
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <button onclick="updateQty(${item.id}, 'minus')">-</button>
-                        <span>${item.quantity}</span>
-                        <button onclick="updateQty(${item.id}, 'plus')">+</button>
-                        <button onclick="removeItem(${item.id})" style="margin-left:auto; color:red; border:none; background:none;">×</button>
+        if(data.items && data.items.length > 0) {
+            countBadge.innerText = data.items.length;
+            countBadge.style.display = 'block';
+        } else {
+            countBadge.style.display = 'none';
+        }
+
+        if(container) {
+            container.innerHTML = data.items.length ? data.items.map(item => `
+                <div class="cart-item" style="display:flex; align-items:center; border-bottom:1px solid #eee; padding:15px;">
+                    <img src="uploads/${item.image}" width="50" height="50" style="margin-right:15px; border-radius:8px; object-fit:cover;">
+                    <div style="flex:1;">
+                        <h4 style="margin:0; font-size:14px; color:#1e293b;">${item.name}</h4>
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:8px;">
+                            <div style="display:flex; align-items:center; gap:10px; background:#f1f5f9; padding:2px 8px; border-radius:6px;">
+                                <button onclick="updateQty(${item.id}, 'minus')" style="border:none; background:none; cursor:pointer; font-weight:bold;">-</button>
+                                <span style="font-size:13px; font-weight:700;">${item.quantity}</span>
+                                <button onclick="updateQty(${item.id}, 'plus')" style="border:none; background:none; cursor:pointer; font-weight:bold;">+</button>
+                            </div>
+                            <span style="font-size:13px; font-weight:700; color:var(--primary);">৳${item.price * item.quantity}</span>
+                            <button onclick="removeItem(${item.id})" style="color:#ef4444; border:none; background:none; cursor:pointer; font-size:16px;">&times;</button>
+                        </div>
                     </div>
                 </div>
-            </div>
-        `).join('') : "<p style='padding:20px;'>Empty!</p>";
+            `).join('') : "<p style='padding:20px; text-align:center; color:#64748b;'>Your bag is empty!</p>";
+        }
 
-        document.getElementById('sideBarTotal').innerText = '৳ ' + data.total.toLocaleString();
+        const totalRow = document.getElementById('sideBarTotal');
+        if(totalRow) totalRow.innerText = '৳ ' + (data.total ? data.total.toLocaleString() : '0.00');
     }
 
     const addToCart = id => fetch(`Controller/add_to_cart_action.php?id=${id}`).then(updateCart).then(() => { 
-        if(!document.getElementById('cartSidebar').classList.contains('open')) toggleCart(); 
+        const sidebar = document.getElementById('cartSidebar');
+        if(sidebar && !sidebar.classList.contains('open')) toggleCart(); 
     });
     
+   
     const updateQty = (id, a) => fetch(`Controller/update_qty.php?id=${id}&action=${a}`).then(updateCart);
-    const removeItem = id => confirm('Remove?') && fetch(`Controller/remove_item.php?id=${id}`).then(updateCart);
+    const removeItem = id => confirm('Remove item?') && fetch(`Controller/update_qty.php?id=${id}&action=minus_all`).then(updateCart);
 
     window.onload = () => { loadProducts(); updateCart(); };
 </script>
